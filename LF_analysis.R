@@ -73,6 +73,12 @@ date_fix = function(dta){
         } else {
           dta[i-1,"rm"] = 1
         }
+      } else if ((dta[i,"Date"] > dta[i-1,"Date"]) & (dta[i,"Confirmed"] < dta[i-1,"Confirmed"])){
+        big = dta[i-1,"Confirmed"]
+        small = dta[i,"Confirmed"]
+        dta[i,"Confirmed"] = big
+        dta[i-1,"Confirmed"] = small
+        err = err + 1
       }
     }
     if (sum(dta$rm) > 0){
@@ -88,3 +94,28 @@ dat_5 = date_fix(dat_4)
 dat_5["rm"] = NULL
 
 write.csv(dat_5,"C:/Users/luiseduardo/OneDrive/Documentos/MScA/0. Side Projects/COVID-19/covid-hackathon/us_covid19_w_measures_and_risk_pop_lfFix.csv")
+
+states_daily = read.csv("C:/Users/luiseduardo/OneDrive/Documentos/MScA/0. Side Projects/COVID-19/covid-hackathon/us_covid19_w_measures_and_risk_pop_lfFix.csv")
+
+dt = as.data.table(states_daily)
+tt = dt[Date == "2020-03-12",State]
+states = dt[Date == "2020-03-11",State]
+setdiff(states,tt)
+# Delaware, Michigan and Rhode Island are missing day 12. All of which the data was missing in the first place
+
+library(tidyverse)
+states_daily = complete(states_daily,State,Date)
+states_daily = states_daily %>% arrange(State, Date)
+nam = names(states_daily)
+nam = nam[nam != "State"]
+states_daily = states_daily %>%
+  group_by(State) %>%
+  fill(nam, .direction = "updown")
+
+dt <- as.data.table(states_daily)
+setkey(dt, State, Date)
+dt[, new_confirmed := Confirmed - shift(Confirmed, fill = first(Confirmed)), by = State]
+
+states_daily = as.data.frame(dt)
+
+ggplot(data = states_daily, mapping = aes(Date, new_confirmed, group = State_abb, colour = State_abb)) + geom_line()
