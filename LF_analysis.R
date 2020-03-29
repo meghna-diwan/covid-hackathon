@@ -1,0 +1,90 @@
+dat = read.csv("C:/Users/luiseduardo/OneDrive/Documentos/MScA/0. Side Projects/COVID-19/covid-hackathon/us_covid19_w_measures_and_risk_pop.csv")
+summary(dat)
+dat["X"] = NULL
+
+dat = dat[!grepl(",", dat$Province.State),]
+dat = dat[!grepl("Una", dat$Province.State),]
+dat = dat[!grepl("Una", dat$State),]
+dat["Province.State"] = NULL
+dat["Country.Region"] = NULL
+
+dat[,c(8,9,10,11,12,13,14,15,16,17,18,19,20,21)] = lapply(dat[,c(8,9,10,11,12,13,14,15,16,17,18,19,20,21)], as.factor)
+dat[,c(22,23,24,25,26,29)] = lapply(dat[,c(22,23,24,25,26,29)], as.numeric)
+
+library(anytime)
+dat["Date"] = lapply(dat["Date"],anytime)
+
+library(ggplot2)
+ggplot(data = dat, mapping = aes(Date, Confirmed, group = State_abb, colour = State_abb)) + geom_line()
+
+library(data.table)
+library(tidyr)
+
+dt <- as.data.table(dat)
+setkey(dt, State, Date)
+dt[, new_confirmed := Confirmed - shift(Confirmed, fill = first(Confirmed)), by = State]
+
+dt = na.omit(dt, cols = "Deaths")
+
+dat_2 = as.data.frame(dt)
+
+ggplot(data = dat_2, mapping = aes(Date, new_confirmed, group = State_abb, colour = State_abb)) + geom_line()
+
+library(tidyverse)
+dat_3 = complete(dat_2,State,Date)
+dat_3 = dat_3 %>% arrange(State)
+dat_3["new_confirmed"] = NULL
+nam = names(dat_3)
+nam = nam[nam != "State"]
+dat_4 = dat_3 %>%
+  group_by(State) %>%
+  fill(nam, .direction = "updown")
+
+dat_4 = dat_4[!grepl("Unas", dat_4$State),]
+
+dat_4[1,] = c("Alabama", "2020-03-10","AL","2020-03-11 20:00:00",5,0,0,"32.3182","-86.9023","0","0","0","0","0","0","0","999","0","0","0","0",18,5,37,5,15,3.13,15,8)
+
+dat_4["rm"] = 0
+
+dat_4[,c(5:7,22:29)] = lapply(dat_4[,c(5:7,22:29)], as.numeric)
+
+date_fix = function(dta){
+  err = 1
+  iters = 0
+  while (err > 0){
+    iters = iters + 1
+    err = 0
+    for (i in c(1:nrow(dta))){
+      if (i == 1){
+        next
+      } else if (dta[i,"State"] != dta[i-1,"State"]){
+        next
+      } else if ((dta[i,"Date"] > dta[i-1,"Date"]) & (dta[i,"Confirmed"] >= dta[i-1,"Confirmed"])){
+        next
+      } else if ((dta[i,"Date"] == dta[i-1,"Date"]) & (dta[i,"Confirmed"] == dta[i-1,"Confirmed"])){
+        dta[i-1,"rm"] = 1
+        err = err + 1
+      } else if ((dta[i,"Date"] == dta[i-1,"Date"]) & (dta[i,"Confirmed"] > dta[i-1,"Confirmed"])) {
+        if ((dta[i,"Confirmed"] < dta[i+2,"Confirmed"]) & (dta[i,"Confirmed"] > dta[i+1,"Confirmed"])) {
+          print(i)
+          dta[i+2,"rm"] = 1
+          dta[i,"Date"] = dta[i,"Date"] + 2*60*60*24
+          err = err+1
+        } else {
+          dta[i-1,"rm"] = 1
+        }
+      }
+    }
+    if (sum(dta$rm) > 0){
+      dta = dta[!grepl(1, dta$rm),]
+    }
+    dta = dta %>% arrange(State, Date)
+    print(err)
+  }
+  return(dta)
+}
+
+dat_5 = date_fix(dat_4)
+dat_5["rm"] = NULL
+
+write.csv(dat_5,"C:/Users/luiseduardo/OneDrive/Documentos/MScA/0. Side Projects/COVID-19/covid-hackathon/us_covid19_w_measures_and_risk_pop_lfFix.csv")
